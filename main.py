@@ -2,8 +2,8 @@ import os
 from math import exp, sqrt
 import numpy as np
 
-from VariationalMonteCarlo.MCSampler import mc_sampler_1_dim, mc_sampler_any_dims
-from plotting import energy_variance_plot, plot_energy_variance_2dims
+from VariationalMonteCarlo.MCSampler import mc_sampler_any_dims
+from plotting import plot_energy_variance_2dims
 
 # NAME_OF_SYSTEM = "VMCHarmonic"
 NAME_OF_SYSTEM = "VMCQdotMetropolis"
@@ -71,28 +71,10 @@ def q_dot_q_force(r, variational_params):
     return qforce
 
 
-def q_dot_wf_OLD(r, alpha, beta):
-    r1 = r[0, 0] ** 2 + r[0, 1] ** 2
-    r2 = r[1, 0] ** 2 + r[1, 1] ** 2
-    r12 = sqrt((r[0, 0] - r[1, 0]) ** 2 + (r[0, 1] - r[1, 1]) ** 2)
-    deno = r12 / (1 + beta * r12)
-    return exp(-0.5 * alpha * (r1 + r2) + deno)
-
-
-def q_dot_local_energy_OLD(r, alpha, beta):
-    r1 = (r[0, 0] ** 2 + r[0, 1] ** 2)
-    r2 = (r[1, 0] ** 2 + r[1, 1] ** 2)
-    r12 = sqrt((r[0, 0] - r[1, 0]) ** 2 + (r[0, 1] - r[1, 1]) ** 2)
-    deno = 1.0 / (1 + beta * r12)
-    deno2 = deno * deno
-    return 0.5 * (1 - alpha * alpha) * (r1 + r2) + 2.0 * alpha + 1.0 / r12 + deno2 * (
-            alpha * r12 - deno2 + 2 * beta * deno - 1.0 / r12)
-
-
 # Here starts the main program with variable declarations
-num_variations = 5
-alpha_values = np.linspace(0.925, 1.4, num_variations)
-beta_values = np.linspace(0.01, 0.2, num_variations)
+num_variations = 15
+alpha_values = np.linspace(0.5, 2.5, num_variations)
+beta_values = np.linspace(0., 0.5, num_variations)
 alpha_mesh, beta_mesh = np.meshgrid(alpha_values, beta_values)
 variational_values = np.column_stack((alpha_mesh.flatten(), beta_mesh.flatten()))
 

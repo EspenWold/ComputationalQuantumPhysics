@@ -43,60 +43,6 @@ def mc_sampler_1_dim(trial_wave_function, local_energy_function, max_variations,
     return energies, alpha_values, variances
 
 
-def mc_sampler_2_dims(trial_wave_function, local_energy_function, num_particles, dimensions, max_variations, outfile):
-    alpha_values = np.zeros(max_variations)
-    beta_values = np.zeros(max_variations)
-    energies = np.zeros((max_variations, max_variations))
-    variances = np.zeros((max_variations, max_variations))
-
-    NumberMCcycles = 25000
-    StepSize = 1.0
-    PositionOld = np.zeros((num_particles, dimensions), np.double)
-    PositionNew = np.zeros((num_particles, dimensions), np.double)
-
-    seed()
-    alpha = 0.9
-    for ia in range(max_variations):
-        alpha += .025
-        alpha_values[ia] = alpha
-        beta = 0.0
-        for jb in range(max_variations):
-            beta += .01
-            beta_values[jb] = beta
-            energy = energy2 = 0.0
-            # Initial position
-            for i in range(num_particles):
-                for j in range(dimensions):
-                    PositionOld[i, j] = StepSize * (random() - .5)
-            wfold = trial_wave_function(PositionOld, alpha, beta)
-
-            # Loop over MC MCcycles
-            for cycle in range(NumberMCcycles):
-                # Trial position moving one particle at the time
-                for i in range(num_particles):
-                    for j in range(dimensions):
-                        PositionNew[i, j] = PositionOld[i, j] + StepSize * (random() - .5)
-                    wfnew = trial_wave_function(PositionNew, alpha, beta)
-
-                    # Metropolis test to see whether we accept the move
-                    if random() < wfnew ** 2 / wfold ** 2:
-                        for j in range(dimensions):
-                            PositionOld[i, j] = PositionNew[i, j]
-                        wfold = wfnew
-                DeltaE = local_energy_function(PositionOld, alpha, beta)
-                energy += DeltaE
-                energy2 += DeltaE ** 2
-            # We calculate mean, variance and error ...
-            energy /= NumberMCcycles
-            energy2 /= NumberMCcycles
-            variance = energy2 - energy ** 2
-            error = sqrt(variance / NumberMCcycles)
-            energies[ia, jb] = energy
-            variances[ia, jb] = variance
-            outfile.write('%f %f %f %f %f\n' % (alpha, beta, energy, variance, error))
-    return energies, variances, alpha_values, beta_values
-
-
 def mc_sampler_any_dims(trial_wave_function, local_energy_function, system_dimensions: int,
                         variational_values: np.array, outfile):
     (num_variations, variational_dimensions) = variational_values.shape
