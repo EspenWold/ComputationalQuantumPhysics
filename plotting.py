@@ -9,21 +9,21 @@ from matplotlib.ticker import LinearLocator, FormatStrFormatter
 def energy_variance_plot(alpha_values, energies, variances, exact_energies,
                          exact_variance, num_particles, num_dimensions, save_path):
     plt.subplot(2, 1, 1)
-    plt.plot(alpha_values, energies, 'o-', alpha_values, exact_energies, 'r-')
+    plt.plot(alpha_values, energies, 'o', alpha_values, exact_energies, 'r-')
     plt.title('Energy and variance - %i particle(s) in %i dimension(s)' % (num_particles, num_dimensions))
     plt.ylabel('Dimensionless energy')
     plt.subplot(2, 1, 2)
-    plt.plot(alpha_values, variances, '.-')
-    if exact_variance:
+    plt.plot(alpha_values, variances, 'o')
+    if len(exact_variance) > 0:
         plt.plot(alpha_values, exact_variance, 'r-')
     plt.xlabel(r'$\alpha$', fontsize=15)
     plt.ylabel('Variance')
-    plt.savefig(save_path + ".png", format='png')
+    plt.savefig(save_path + f'_{num_dimensions}d_{num_particles}p' + ".png", format='png')
     plt.show()
-    data = {'Alpha': alpha_values, 'Energy': energies, 'Exact Energy': exact_energies, 'Variance': variances,
-            'Exact Variance': exact_variance, }
-    frame = pd.DataFrame(data)
-    print(frame)
+    # data = {'Alpha': alpha_values, 'Energy': energies, 'Exact Energy': exact_energies, 'Variance': variances,
+    #         'Exact Variance': exact_variance, }
+    # frame = pd.DataFrame(data)
+    # print(frame)
 
 
 def plot_energy_variance_2dims(alpha_values, beta_values, energies, save_path):
