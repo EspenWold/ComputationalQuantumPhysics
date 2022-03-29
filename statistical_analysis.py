@@ -1,16 +1,7 @@
-import os
 import numpy as np
 from time import time
-import pandas as pd
 
-DATA_ID = "Results/EnergyMin"
-
-
-def data_path(dat_id):
-    return os.path.join(DATA_ID, dat_id)
-
-
-infile = open(data_path("Energies.dat"), 'r')
+# Functions for statistical post analysis provided as part of the lecture materials for the course (FYS4411)
 
 
 def bootstrap(data, bootstrap_data_points):
@@ -56,7 +47,7 @@ def block(data):
     n = len(data)
     d = int(np.log2(n))
     s, gamma = np.zeros(d), np.zeros(d)
-    mu = mean(data)
+    mu = np.mean(data)
 
     # estimate the auto-covariance and variances
     # for each blocking transformation
@@ -65,7 +56,7 @@ def block(data):
         # estimate autocovariance of x
         gamma[i] = n ** (-1) * sum((data[0:(n - 1)] - mu) * (data[1:n] - mu))
         # estimate variance of x
-        s[i] = var(data)
+        s[i] = np.var(data)
         # perform blocking transformation
         data = 0.5 * (data[0::2] + data[1::2])
 
@@ -85,12 +76,3 @@ def block(data):
     if k >= d - 1:
         print("Warning: Use more data")
     return mu, s[k] / 2 ** (d - k)
-
-
-x = np.loadtxt(infile)
-(mean, var) = block(x)
-std = np.sqrt(var)
-
-results = {'Mean': [mean], 'STDev': [std]}
-frame = pd.DataFrame(results, index=['Values'])
-print(frame)

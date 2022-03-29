@@ -1,4 +1,3 @@
-import time
 from random import random, seed, normalvariate, randrange
 from math import sqrt, exp
 import numpy as np
@@ -63,12 +62,12 @@ def harmonic_oscillator_normalised_wf_gradient(pos):
 
 
 def mc_sampler_harmonic_oscillator(alphas: ndarray,
-                                              num_particles: int,
-                                              dimensions_per_particle: int,
-                                              num_cycles: int,
-                                              numerical: bool,
-                                              importance_sampling: bool,
-                                              outfile):
+                                   num_particles: int,
+                                   dimensions_per_particle: int,
+                                   num_cycles: int,
+                                   numerical: bool,
+                                   importance_sampling: bool,
+                                   outfile):
     (num_variations,) = alphas.shape
     values = np.zeros(num_variations)
     variances = np.zeros(num_variations)
@@ -201,13 +200,42 @@ def harmonic_oscillator_gradient_descent(initial_alpha: float,
                                          num_particles: int,
                                          dimensions_per_particle: int,
                                          importance_sampling: bool):
-    learning_rate = 0.15
-
-    # MCMC constants
+    learning_rate = 10**(-5)
     number_of_cycles = 10000
+
+    alpha = initial_alpha
+    energy_estimate = norm_grad_estimate = grad_by_energy_estimate = 0.0
+    for n in range(10):
+        # Update our variational parameters by using the estimated gradient
+        variational_gradient = 2 * (grad_by_energy_estimate - energy_estimate * norm_grad_estimate)
+        alpha = alpha - learning_rate * variational_gradient
+
+        # Run a single round of MCMC
+        energy_estimate, norm_grad_estimate, grad_by_energy_estimate = single_run_mcmc_sampler(
+            alpha=alpha,
+            number_of_cycles=number_of_cycles,
+            num_particles=num_particles,
+            dimensions_per_particle=dimensions_per_particle,
+            importance_sampling=importance_sampling,
+            gradient=True,
+            print_to_file=False,
+            outfile=False)  # OK because the outfile is never accessed with print set to false
+
+        print("Step ", n + 1)
+        print("Alpha: ", alpha, " Energy: ", energy_estimate, " Gradient: ", variational_gradient)
+
+    return alpha
+
+
+def single_run_mcmc_sampler(alpha, number_of_cycles, num_particles, dimensions_per_particle,
+                            importance_sampling, gradient, print_to_file, outfile):
+    # MCMC constants
     D = 0.5
     time_step = 0.05
 
+    seed()
+
+    # Instantiate needed arrays
     new_position_per_particle: ndarray = np.zeros((num_particles, dimensions_per_particle), np.double)
     old_position_per_particle: ndarray = np.zeros((num_particles, dimensions_per_particle), np.double)
     if importance_sampling:
@@ -216,80 +244,78 @@ def harmonic_oscillator_gradient_descent(initial_alpha: float,
     new_wf_per_particle: ndarray = np.zeros(num_particles, np.double)
     old_wf_per_particle: ndarray = np.zeros(num_particles, np.double)
 
-    seed()
-    alpha = initial_alpha
-    energy_estimate = energy_squared_estimate = 0.0
-    norm_grad_estimate = grad_by_energy_estimate = 0.0
-    for n in range(10):
-        # Update our variational parameters by using the estimated gradient
-        variational_gradient = 2 * (grad_by_energy_estimate - energy_estimate * norm_grad_estimate)
-        alpha = alpha - learning_rate * variational_gradient
+    # Initial position
+    for particle_index in range(num_particles):
+        for dimension_index in range(dimensions_per_particle):
+            old_position_per_particle[particle_index][dimension_index] = normalvariate(0.0, 1.0) * sqrt(time_step)
 
-        # Initial position
-        for particle_index in range(num_particles):
-            for dimension_index in range(dimensions_per_particle):
-                old_position_per_particle[particle_index][dimension_index] = normalvariate(0.0, 1.0) * sqrt(time_step)
-
-            old_wf_per_particle[particle_index] = harmonic_oscillator_wf(
+        old_wf_per_particle[particle_index] = harmonic_oscillator_wf(
+            old_position_per_particle[particle_index], alpha)
+        if importance_sampling:
+            old_qf_per_particle[particle_index] = harmonic_oscillator_quantum_force(
                 old_position_per_particle[particle_index], alpha)
+
+    # Initiate energy estimate over all particles
+    sampled_energy_value = sampled_gradient_value = 0
+    for (pi, pos) in enumerate(old_position_per_particle):
+        sampled_energy_value += harmonic_oscillator_local_energy(pos, alpha, dimensions_per_particle)
+        if gradient:
+            sampled_gradient_value += harmonic_oscillator_normalised_wf_gradient(pos)
+
+    energy_estimate = grad_by_energy_estimate = norm_grad_estimate = 0.0
+    # Loop over MCMC cycles
+    for cycle in range(number_of_cycles):
+
+        # Trial position by moving a single random particle
+        pi = randrange(num_particles)
+        for di in range(dimensions_per_particle):
+            new_position = old_position_per_particle[pi][di] + normalvariate(0.0, 1.0) * sqrt(time_step)
             if importance_sampling:
-                old_qf_per_particle[particle_index] = harmonic_oscillator_quantum_force(
-                    old_position_per_particle[particle_index], alpha)
+                new_position += old_qf_per_particle[pi][di] * time_step * D
+            new_position_per_particle[pi][di] = new_position
 
-        # Loop over MCMC cycles
-        for cycle in range(number_of_cycles):
+        new_wf_per_particle[pi] = harmonic_oscillator_wf(new_position_per_particle[pi], alpha)
 
-            # Trial position by single particle moves
-            for pi in range(num_particles):
-                for di in range(dimensions_per_particle):
-                    new_position = old_position_per_particle[pi][di] + normalvariate(0.0, 1.0) * sqrt(time_step)
-                    if importance_sampling:
-                        new_position += old_qf_per_particle[pi][di] * time_step * D
-                    new_position_per_particle[pi][di] = new_position
+        # Metropolis acceptance ratio
+        acceptance_ratio = (new_wf_per_particle[pi] / old_wf_per_particle[pi]) ** 2
 
-                new_wf_per_particle[pi] = harmonic_oscillator_wf(new_position_per_particle[pi], alpha)
+        # Add importance sampling greens function factor
+        if importance_sampling:
+            new_qf_per_particle[pi] = harmonic_oscillator_quantum_force(new_position_per_particle[pi], alpha)
+            greens_function_exponent = 0
+            for di in range(dimensions_per_particle):
+                greens_function_exponent += 0.5 * (old_qf_per_particle[pi][di] + new_qf_per_particle[pi][di]) \
+                                            * (old_position_per_particle[pi][di]
+                                               - new_position_per_particle[pi][di]
+                                               + 0.5 * D * time_step * (old_qf_per_particle[pi][di] -
+                                                                        new_qf_per_particle[pi][di])
+                                               )
+            greens_function_factor = exp(greens_function_exponent)
+            acceptance_ratio *= greens_function_factor
 
-                # Metropolis acceptance ratio
-                acceptance_ratio = (new_wf_per_particle[pi] / old_wf_per_particle[pi]) ** 2
+        if random() < acceptance_ratio:
 
-                # Add importance sampling greens function factor
+            sampled_energy_value -= harmonic_oscillator_local_energy(old_position_per_particle[pi], alpha,
+                                                                     dimensions_per_particle)
+            sampled_energy_value += harmonic_oscillator_local_energy(new_position_per_particle[pi], alpha,
+                                                                     dimensions_per_particle)
+            if gradient:
+                sampled_gradient_value -= harmonic_oscillator_normalised_wf_gradient(old_position_per_particle[pi])
+                sampled_gradient_value += harmonic_oscillator_normalised_wf_gradient(new_position_per_particle[pi])
+
+            # Update single particle position
+            for di in range(dimensions_per_particle):
+                old_position_per_particle[pi][di] = new_position_per_particle[pi][di]
                 if importance_sampling:
-                    new_qf_per_particle[pi] = harmonic_oscillator_quantum_force(new_position_per_particle[pi], alpha)
-                    greens_function_exponent = 0
-                    for di in range(dimensions_per_particle):
-                        greens_function_exponent += 0.5 * (old_qf_per_particle[pi][di] + new_qf_per_particle[pi][di]) \
-                                                    * (old_position_per_particle[pi][di]
-                                                       - new_position_per_particle[pi][di]
-                                                       + 0.5 * D * time_step * (old_qf_per_particle[pi][di] -
-                                                                                new_qf_per_particle[pi][di])
-                                                       )
-                    greens_function_factor = exp(greens_function_exponent)
-                    acceptance_ratio *= greens_function_factor
+                    old_qf_per_particle[pi][di] = new_qf_per_particle[pi][di]
+            old_wf_per_particle[pi] = new_wf_per_particle[pi]
 
-                if random() < acceptance_ratio:
-                    for di in range(dimensions_per_particle):
-                        old_position_per_particle[pi][di] = new_position_per_particle[pi][di]
-                        if importance_sampling:
-                            old_qf_per_particle[pi][di] = new_qf_per_particle[pi][di]
-                    old_wf_per_particle[pi] = new_wf_per_particle[pi]
+        if print_to_file:
+            outfile.write('%f\n' % sampled_energy_value)
+        energy_estimate += sampled_energy_value
+        norm_grad_estimate += sampled_gradient_value
+        grad_by_energy_estimate += sampled_energy_value * sampled_gradient_value
 
-            sampled_energy_value = 0
-            sampled_gradient_value = 0
-            for pos in old_position_per_particle:
-                sampled_energy_value += harmonic_oscillator_local_energy(pos, alpha, dimensions_per_particle)
-                sampled_gradient_value += harmonic_oscillator_normalised_wf_gradient(pos)
-            energy_estimate += sampled_energy_value
-            energy_squared_estimate += sampled_energy_value ** 2
-            norm_grad_estimate += sampled_gradient_value
-            grad_by_energy_estimate += sampled_energy_value * sampled_gradient_value
-
-        # We calculate our estimates and variance
-        energy_estimate /= number_of_cycles
-        energy_squared_estimate /= number_of_cycles
-        variance = energy_squared_estimate - energy_estimate ** 2
-        norm_grad_estimate /= number_of_cycles
-        grad_by_energy_estimate /= number_of_cycles
-
-        print(alpha, variational_gradient, energy_estimate, norm_grad_estimate, grad_by_energy_estimate)
-
-    return alpha
+    return energy_estimate / number_of_cycles, \
+           norm_grad_estimate / number_of_cycles, \
+           grad_by_energy_estimate / number_of_cycles

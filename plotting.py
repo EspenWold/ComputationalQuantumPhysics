@@ -80,3 +80,56 @@ def create_gif(data_path):
     # ani.save("gaussian.gif", writer=writer)
     writer = FFMpegWriter(fps=25)
     ani.save('gaussian.mp4', writer=writer)
+
+
+def surface_plot(matrix, **kwargs):
+    (x, y) = np.meshgrid(np.arange(matrix.shape[0]), np.arange(matrix.shape[1]))
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    surf = ax.plot_surface(x, y, matrix, **kwargs)
+    return fig, ax, surf
+
+
+def plot_positions(positions, resolution):
+    max_value = np.max(positions) + 10 ** (-12)
+    min_value = np.min(positions)
+    length_unit = (max_value - min_value) / resolution
+    # 1D bins
+    x_bins = np.zeros(resolution, int)
+    y_bins = np.zeros(resolution, int)
+    z_bins = np.zeros(resolution, int)
+    # 2D projection bins
+    zx_bins = np.zeros((resolution, resolution), int)
+    xy_bins = np.zeros((resolution, resolution), int)
+    yz_bins = np.zeros((resolution, resolution), int)
+    for p in positions:
+        x_bin = int(np.floor((p[0] - min_value) / length_unit))
+        y_bin = int(np.floor((p[1] - min_value) / length_unit))
+        z_bin = int(np.floor((p[2] - min_value) / length_unit))
+        x_bins[x_bin] += 1
+        y_bins[y_bin] += 1
+        z_bins[z_bin] += 1
+        zx_bins[z_bin][x_bin] += 1
+        xy_bins[x_bin][y_bin] += 1
+        yz_bins[y_bin][z_bin] += 1
+
+    plt.figure(1)
+    plt.subplot(3, 1, 1)
+    plt.plot(np.linspace(min_value, max_value, resolution), x_bins, 'b-')
+    plt.subplot(3, 1, 2)
+    plt.plot(np.linspace(min_value, max_value, resolution), y_bins, 'b-')
+    plt.subplot(3, 1, 3)
+    plt.plot(np.linspace(min_value, max_value, resolution), z_bins, 'b-')
+
+    fig = plt.figure(2)
+    (x, y) = np.meshgrid(np.arange(resolution), np.arange(resolution))
+    plt.subplot(131)
+    plt.contour(x, y, zx_bins)
+    plt.subplot(132)
+    plt.contour(x, y, xy_bins)
+    plt.subplot(133)
+    plt.contour(x, y, yz_bins)
+    # ax1 = fig.add_subplot(121, projection='3d')
+    # ax1.plot_surface(x, y,  bins)
+
+    plt.show()
