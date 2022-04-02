@@ -5,14 +5,10 @@ from numba import jit
 
 
 @jit(nopython=True)
-def single_particle_wf_contribution(all_positions, particle_index, alpha, beta, a, distances, interactions):
-    single_particle_term = exp(- alpha * (
-            all_positions[particle_index][0] ** 2
-            + all_positions[particle_index][1] ** 2
-            + beta * all_positions[particle_index][2] ** 2))
+def single_particle_wf_contribution(pos, alpha, beta, a, distances, interactions):
+    single_particle_term = exp(- alpha * (pos[0] ** 2 + pos[1] ** 2 + beta * pos[2] ** 2))
 
-    # Ignore correlation term if passed empty list of distances
-    if not interactions:
+    if not interactions:  # Ignore correlation terms
         return single_particle_term
 
     if min(distances) <= a:
@@ -36,14 +32,13 @@ def single_particle_local_energy_contribution(pos, alpha, beta, gamma, u_prime_t
     single_particle_term = alpha * (2 + beta) - 2 * alpha ** 2 * (x2 + y2 + beta ** 2 * z2) + 0.5 * (
             x2 + y2 + gamma ** 2 * z2)
 
-    # Ignore correlation terms if passed empty list of distances
-    if not interactions:
+    if not interactions:  # Ignore correlation terms
         return single_particle_term
 
     double_sum_correlation_term = 0
     single_sum_correlation_term = np.sum(0.5 * u_prime_terms ** 2)
     for j in range(len(u_prime_terms)):
-        single_sum_correlation_term += 2 * alpha * u_prime_terms[j] * (np.dot(normalised_diff_vecs[j], beta_i))
+        single_sum_correlation_term += 2 * alpha * u_prime_terms[j] * np.dot(normalised_diff_vecs[j], beta_i)
         for k in range(len(u_prime_terms)):
             cos_ij_ik = np.dot(normalised_diff_vecs[j], normalised_diff_vecs[k])
             if cos_ij_ik < -1.000001 or cos_ij_ik > 1.000001:
@@ -58,8 +53,7 @@ def quantum_force(pos, alpha, beta, u_prime_terms, normalised_diff_vecs, interac
     [x, y, z] = pos
     single_particle_term = -4 * alpha * np.array([x, y, beta * z])
 
-    # Ignore correlation term if passed empty list of distances
-    if not interactions:
+    if not interactions:  # Ignore correlation terms
         return single_particle_term
 
     correlation_term = np.zeros(len(pos))
@@ -109,7 +103,7 @@ def get_new_precomputes(new_position_per_particle, particle_index, a):
     normalized_diff_vectors = np.zeros((n, dims))
     for i in range(n):
         index = i if i < particle_index else i + 1
-        vec = np.subtract(new_position_per_particle[index], new_position_per_particle[particle_index])
+        vec = np.subtract(new_position_per_particle[particle_index], new_position_per_particle[index])
         norm = np.linalg.norm(vec)
         distances[i] = norm
         normalized_diff_vectors[i] = vec / norm
@@ -118,9 +112,9 @@ def get_new_precomputes(new_position_per_particle, particle_index, a):
 
 
 def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num_particles: int,
-                                        importance_sampling: bool, gradient: bool, interactions: bool,
-                                        print_to_file: bool, outfile,
-                                        positions_file):
+                                        importance_sampling: bool, gradient: bool,
+                                        interactions: bool, elliptical: bool,
+                                        print_to_file: bool, outfile, positions_file):
     # MCMC constants
     D = 0.5
     time_step = 0.25
@@ -128,7 +122,7 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
     # System constants
     dimensions_per_particle = 3
     a = 0.0043
-    beta = gamma = 2.8284
+    beta = gamma = 2.8284 if elliptical else 1
 
     # Instantiate needed arrays
     new_position_per_particle: np.ndarray = np.zeros((num_particles, dimensions_per_particle), np.double)
@@ -160,7 +154,7 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
     # Calculate initial wavefunction and quantum force
     for particle_index in range(num_particles):
         distances = pick_out_precomputes_for_one_particle(distance_matrix, particle_index)
-        old_wf_per_particle[particle_index] = single_particle_wf_contribution(old_position_per_particle, particle_index,
+        old_wf_per_particle[particle_index] = single_particle_wf_contribution(old_position_per_particle[particle_index],
                                                                               alpha, beta, a, distances, interactions)
         if importance_sampling:
             u_prime_terms = pick_out_precomputes_for_one_particle(u_prime_matrix, particle_index)
@@ -171,11 +165,12 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
     # Initiate energy estimate over all particles
     sampled_energy_value = sampled_gradient_value = 0
     for particle_index in range(num_particles):
-        u_prime_terms = pick_out_precomputes_for_one_particle(u_prime_matrix, particle_index)
-        norm_diff_vectors = pick_out_vector_precomputes_for_one_particle(norm_diff_vector_matrix, particle_index)
-        sampled_energy_value += single_particle_local_energy_contribution(old_position_per_particle[particle_index],
-                                                                          alpha, beta, gamma, u_prime_terms,
-                                                                          norm_diff_vectors, interactions)
+        # TODO: Unresolved bug - for some reason this strategy of precomputing the energy and then updating it with each particle move fails in the interacting case and the energy keeps growing throughout the simulation
+        # u_prime_terms = pick_out_precomputes_for_one_particle(u_prime_matrix, particle_index)
+        # norm_diff_vectors = pick_out_vector_precomputes_for_one_particle(norm_diff_vector_matrix, particle_index)
+        # sampled_energy_value += single_particle_local_energy_contribution(old_position_per_particle[particle_index],
+        #                                                                   alpha, beta, gamma, u_prime_terms,
+        #                                                                   norm_diff_vectors, interactions)
         if gradient:
             sampled_gradient_value += normalised_wf_gradient(old_position_per_particle[particle_index], beta)
 
@@ -195,7 +190,7 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
             new_position_per_particle[pi][di] = new_position
 
         [new_distances, new_diff_vecs, new_u_primes] = get_new_precomputes(new_position_per_particle, pi, a)
-        new_wf_per_particle[pi] = single_particle_wf_contribution(new_position_per_particle, pi,
+        new_wf_per_particle[pi] = single_particle_wf_contribution(new_position_per_particle[pi],
                                                                   alpha, beta, a, new_distances, interactions)
 
         # Metropolis acceptance ratio
@@ -217,14 +212,16 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
             acceptance_ratio *= greens_function_factor
 
         if random() < acceptance_ratio:
-            u_prime_terms = pick_out_precomputes_for_one_particle(u_prime_matrix, pi)
-            norm_diff_vectors = pick_out_vector_precomputes_for_one_particle(norm_diff_vector_matrix, pi)
-            sampled_energy_value -= single_particle_local_energy_contribution(old_position_per_particle[pi], alpha,
-                                                                              beta, gamma, u_prime_terms,
-                                                                              norm_diff_vectors, interactions)
-            sampled_energy_value += single_particle_local_energy_contribution(new_position_per_particle[pi], alpha,
-                                                                              beta, gamma, new_u_primes,
-                                                                              new_diff_vecs, interactions)
+            # TODO: Unresolved bug - for some reason this strategy of precomputing the energy and then updating it with each particle move fails in the interacting case and the energy keeps growing throughout the simulation
+            # u_prime_terms = pick_out_precomputes_for_one_particle(u_prime_matrix, pi)
+            # norm_diff_vectors = pick_out_vector_precomputes_for_one_particle(norm_diff_vector_matrix, pi)
+            # sampled_energy_value -= single_particle_local_energy_contribution(old_position_per_particle[pi], alpha,
+            #                                                                   beta, gamma, u_prime_terms,
+            #                                                                   norm_diff_vectors, interactions)
+            # sampled_energy_value += single_particle_local_energy_contribution(new_position_per_particle[pi], alpha,
+            #                                                                   beta, gamma, new_u_primes,
+            #                                                                   new_diff_vecs, interactions)
+
             if gradient:
                 sampled_gradient_value -= normalised_wf_gradient(old_position_per_particle[pi], beta)
                 sampled_gradient_value += normalised_wf_gradient(new_position_per_particle[pi], beta)
@@ -249,17 +246,28 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
             old_wf_per_particle[pi] = new_wf_per_particle[pi]
             count += 1
 
+        # Ugly hack to get around the bug mentioned above (energy grows over time with one-particle changes)
+        energy_sample = 0
+        for pi in range(num_particles):
+            u_prime_terms = pick_out_precomputes_for_one_particle(u_prime_matrix, pi)
+            norm_diff_vectors = pick_out_vector_precomputes_for_one_particle(norm_diff_vector_matrix, pi)
+            energy_sample += single_particle_local_energy_contribution(old_position_per_particle[pi], alpha,
+                                                                       beta, gamma, u_prime_terms,
+                                                                       norm_diff_vectors, interactions)
         progress += 1
         if print_to_file:
             if progress % 50000 == 0:
+                print("--------------------------------")
                 print("Progress: ", 100 * (progress / number_of_cycles), " percent")
-            outfile.write('%f\n' % sampled_energy_value)
-            positions_file.write('%f %f %f\n' % (
-                old_position_per_particle[0][0], old_position_per_particle[0][1], old_position_per_particle[0][2]))
+                print("Energy estimate:", energy_estimate / progress)
+            outfile.write('%f\n' % energy_sample)
+            for i in range(num_particles):
+                positions_file.write('%f %f %f\n' % (
+                    old_position_per_particle[i][0], old_position_per_particle[i][1], old_position_per_particle[i][2]))
 
-        energy_estimate += sampled_energy_value
+        energy_estimate += energy_sample
         norm_grad_estimate += sampled_gradient_value
-        grad_by_energy_estimate += sampled_energy_value * sampled_gradient_value
+        grad_by_energy_estimate += energy_sample * sampled_gradient_value
 
     print("Acceptance rate: ", count / number_of_cycles)
     return energy_estimate / number_of_cycles, \
@@ -270,13 +278,19 @@ def single_run_interaction_mcmc_sampler(alpha: float, number_of_cycles: int, num
 def interaction_gradient_descent(initial_alpha: float,
                                  num_particles: int,
                                  importance_sampling: bool,
-                                 interactions: bool):
-    learning_rate = 1.5 * 10 ** (-1) / num_particles
-    number_of_cycles = 20000
+                                 interactions: bool,
+                                 elliptical: bool):
+    learning_rate = 5 * 10 ** (-3)
+    if num_particles == 50:
+        learning_rate = 8*10 ** (-4)
+    if num_particles == 100:
+        learning_rate = 3 * 10 ** (-4)
+
+    number_of_cycles = 10000
 
     alpha = initial_alpha
     energy_estimate = norm_grad_estimate = grad_by_energy_estimate = 0.0
-    for n in range(20):
+    for n in range(25):
         # Update our variational parameters by using the estimated gradient
         variational_gradient = 2 * (grad_by_energy_estimate - energy_estimate * norm_grad_estimate)
         alpha = alpha - learning_rate * variational_gradient
@@ -289,6 +303,7 @@ def interaction_gradient_descent(initial_alpha: float,
             importance_sampling=importance_sampling,
             gradient=True,
             interactions=interactions,
+            elliptical=elliptical,
             print_to_file=False,
             outfile=False,  # OK because the outfile is never accessed with print set to false
             positions_file=False)  # OK because the outfile is never accessed with print set to false

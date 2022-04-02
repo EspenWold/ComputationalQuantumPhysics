@@ -90,6 +90,26 @@ def surface_plot(matrix, **kwargs):
     return fig, ax, surf
 
 
+def plot_several_densities(position_vectors, resolution, particles, save_path):
+    clr = ['b', 'r', 'g', 'm']
+    fig = plt.figure(1)
+    for i, positions in enumerate(position_vectors):
+        xy_dist = np.sqrt(positions[:, 0]**2 + positions[:, 1]**2)
+        xy_hist, xy_bins = np.histogram(xy_dist, bins=np.linspace(0, 2, resolution), density=True)
+        z_hist, z_bins = np.histogram(positions[:, 2], bins=np.linspace(-2, 2, resolution), density=True)
+
+        plt.subplot(2, 1, 1)
+        plt.title(f"Simulated one-body density for {particles} particles")
+        plt.xlabel("xy-distance from origin")
+        plt.plot(xy_bins[0:-1], xy_hist, clr[i] + '.')
+        plt.subplot(2, 1, 2)
+        plt.xlabel("z")
+        plt.plot(z_bins[0:-1], z_hist, clr[i] + '.')
+    fig.tight_layout()
+    plt.savefig(save_path + ".png", format='png')
+    plt.show()
+
+
 def plot_positions(positions, resolution):
     max_value = np.max(positions) + 10 ** (-12)
     min_value = np.min(positions)
@@ -121,8 +141,8 @@ def plot_positions(positions, resolution):
     plt.subplot(3, 1, 3)
     plt.plot(np.linspace(min_value, max_value, resolution), z_bins, 'b-')
 
-    fig = plt.figure(2)
-    (x, y) = np.meshgrid(np.arange(resolution), np.arange(resolution))
+    plt.figure(2)
+    (x, y) = np.meshgrid(np.linspace(min_value, max_value, resolution), np.linspace(min_value, max_value, resolution))
     plt.subplot(131)
     plt.contour(x, y, zx_bins)
     plt.subplot(132)
