@@ -6,11 +6,13 @@ from SimulatedSystems.harmonic_oscillator import exact_energy_1d, exact_energy_2
     harmonic_oscillator_gradient_descent, exact_variance_1d, exact_variance_2d, exact_variance_3d, \
     mc_sampler_harmonic_oscillator, single_run_mcmc_sampler
 from SimulatedSystems.interacting_case import single_run_interaction_mcmc_sampler, interaction_gradient_descent
-from plotting import energy_variance_plot, plot_positions, plot_several_densities
+from VariationalMonteCarlo.MCSampler import gradient_descent, BMWaveFunctionModel, single_run_model_mcmc_sampler
+from plotting import energy_variance_plot, plot_positions, plot_several_densities, plot_2d_densities
 from statistical_analysis import block
 
 # NAME_OF_SYSTEM = "VMCHarmonic"
-NAME_OF_SYSTEM = "VMCInteracting"
+# NAME_OF_SYSTEM = "VMCInteracting"
+NAME_OF_SYSTEM = "VMC_RBM"
 
 PROJECT_ROOT_DIR = "Results"
 FIGURE_ID = "Results/" + NAME_OF_SYSTEM + "/FigureFiles"
@@ -56,47 +58,47 @@ def positions_path(dat_id):
 # Argument 'importance_sampling' to the MC sampler toggles the use of importance sampling
 # and 'numerical' toggles approximated local energy by numerical differentiation
 # ------------------------------------------------
-num_variations = 50
-alpha_values = np.linspace(0.2, 1.2, num_variations)
-
-particle_numbers = [1, 10, 100, 500]
-dimension_numbers = [1, 2, 3]
-num_cycles = 200000
-for num_dimensions in dimension_numbers:
-    for num_particles in particle_numbers:
-        outfile = open(data_path(NAME_OF_SYSTEM + f'_{num_dimensions}d_{num_particles}p' + ".dat"), 'w')
-        tic = time.perf_counter()
-        (energies, variances) = mc_sampler_harmonic_oscillator(alphas=alpha_values,
-                                                               num_particles=num_particles,
-                                                               dimensions_per_particle=num_dimensions,
-                                                               num_cycles=num_cycles,
-                                                               numerical=False,
-                                                               importance_sampling=False,
-                                                               outfile=outfile)
-
-        toc = time.perf_counter()
-        print(
-            f"Ran simulation for {num_particles} particle(s) in {num_dimensions} dimension(s) in {toc - tic:0.4f} seconds")
-        outfile.close()
-
-        exact_energies = num_particles * exact_energy_1d(alpha_values)
-        exact_variance = num_particles * exact_variance_1d(alpha_values)
-        if num_dimensions == 2:
-            exact_energies = num_particles * exact_energy_2d(alpha_values)
-            exact_variance = num_particles * exact_variance_2d(alpha_values)
-        if num_dimensions == 3:
-            exact_energies = num_particles * exact_energy_3d(alpha_values)
-            exact_variance = num_particles * exact_variance_3d(alpha_values)
-
-        energy_variance_plot(
-            alpha_values=alpha_values,
-            energies=energies,
-            variances=variances,
-            exact_energies=exact_energies,
-            exact_variance=exact_variance,
-            num_particles=num_particles,
-            num_dimensions=num_dimensions,
-            save_path=image_path(NAME_OF_SYSTEM))
+# num_variations = 50
+# alpha_values = np.linspace(0.2, 1.2, num_variations)
+#
+# particle_numbers = [1, 10, 100, 500]
+# dimension_numbers = [1, 2, 3]
+# num_cycles = 200000
+# for num_dimensions in dimension_numbers:
+#     for num_particles in particle_numbers:
+#         outfile = open(data_path(NAME_OF_SYSTEM + f'_{num_dimensions}d_{num_particles}p' + ".dat"), 'w')
+#         tic = time.perf_counter()
+#         (energies, variances) = mc_sampler_harmonic_oscillator(alphas=alpha_values,
+#                                                                num_particles=num_particles,
+#                                                                dimensions_per_particle=num_dimensions,
+#                                                                num_cycles=num_cycles,
+#                                                                numerical=False,
+#                                                                importance_sampling=False,
+#                                                                outfile=outfile)
+#
+#         toc = time.perf_counter()
+#         print(
+#             f"Ran simulation for {num_particles} particle(s) in {num_dimensions} dimension(s) in {toc - tic:0.4f} seconds")
+#         outfile.close()
+#
+#         exact_energies = num_particles * exact_energy_1d(alpha_values)
+#         exact_variance = num_particles * exact_variance_1d(alpha_values)
+#         if num_dimensions == 2:
+#             exact_energies = num_particles * exact_energy_2d(alpha_values)
+#             exact_variance = num_particles * exact_variance_2d(alpha_values)
+#         if num_dimensions == 3:
+#             exact_energies = num_particles * exact_energy_3d(alpha_values)
+#             exact_variance = num_particles * exact_variance_3d(alpha_values)
+#
+#         energy_variance_plot(
+#             alpha_values=alpha_values,
+#             energies=energies,
+#             variances=variances,
+#             exact_energies=exact_energies,
+#             exact_variance=exact_variance,
+#             num_particles=num_particles,
+#             num_dimensions=num_dimensions,
+#             save_path=image_path(NAME_OF_SYSTEM))
 # ------------------------------------------------
 
 # Task D & E - Uncomment block and run to reproduce results from report
@@ -141,7 +143,7 @@ for num_dimensions in dimension_numbers:
 # Task G - Uncomment block and run to reproduce results from report
 # Make sure to set NAME_OF_SYSTEM = "VMCInteracting" in the top of this file
 # ------------------------------------------------
-# num_particles = 10
+# num_particles = 500
 # elliptical = True
 # interacting = True
 #
@@ -150,7 +152,7 @@ for num_dimensions in dimension_numbers:
 #
 # experiment_string = f'_{3}d_{num_particles}p_' + potential_str + interaction_str + ".dat"
 #
-# initial_alpha_guess = 1.5
+# initial_alpha_guess = 1.0
 # alpha = interaction_gradient_descent(initial_alpha=initial_alpha_guess,
 #                                      num_particles=num_particles,
 #                                      importance_sampling=True,
@@ -176,6 +178,7 @@ for num_dimensions in dimension_numbers:
 #                                     positions_file=positions_file)
 #
 # outfile.close()
+# positions_file.close()
 #
 # tic = time.perf_counter()
 # x = np.loadtxt(energy_samples_file_path)
@@ -187,14 +190,66 @@ for num_dimensions in dimension_numbers:
 # results = {'Mean': [mean], 'STDev': [std]}
 # frame = pd.DataFrame(results, index=['Values'])
 # print(frame)
-
-# Plotting from files
+#
+# # Plotting from files
 # el_str = 'elliptical_'
 # sp_str = 'spherical_'
 # int_str = 'interacting'
 # nint_str = 'non-interacting'
-
+#
 # positions_non_int = np.loadtxt(positions_path(NAME_OF_SYSTEM + f'_{3}d_{num_particles}p_' + el_str + nint_str + ".dat"))
 # positions_int = np.loadtxt(positions_path(NAME_OF_SYSTEM + f'_{3}d_{num_particles}p_' + el_str + int_str + ".dat"))
-#
-# plot_several_densities(position_vectors=[positions_non_int, positions_int], resolution=100, particles=num_particles, save_path=image_path("OB-density-nonint"))
+# #
+# plot_several_densities(position_vectors=[positions_non_int, positions_int], resolution=100, particles=num_particles,
+#                        save_path=image_path("OB-density-nonint"))
+
+# ------------------------------------------------
+
+
+# Project 2
+# Make sure to set NAME_OF_SYSTEM = "VMC_RBM" in the top of this file
+# ------------------------------------------------
+num_particles = 2
+dimensions = 2
+num_hidden_nodes = 2
+interacting = False
+
+interaction_str = 'interacting' if interacting else 'non-interacting'
+experiment_string = f'_{dimensions}d_{num_particles}p_' + interaction_str + ".dat"
+
+model = BMWaveFunctionModel(wf_squared=False,
+                            num_particles=num_particles,
+                            dimensions=dimensions,
+                            num_hidden_nodes=num_hidden_nodes)
+
+# gradient_descent(wf_model=model, interactions=interacting)
+
+# Test model for known solution
+(num_particles, dimensions_per_particle, num_parameters) = model.get_model_specs()
+a = np.zeros(num_particles * dimensions_per_particle)
+b = np.zeros(num_hidden_nodes)
+w = np.zeros(num_particles * dimensions_per_particle * num_hidden_nodes)
+model.set_parameters(np.concatenate((a, b, w)))
+# print(model.log_derivatives_position(np.array([0.5, 0.5, -0.5, -0.5])))
+
+energy_samples_file_path = raw_samples_path(NAME_OF_SYSTEM + experiment_string)
+positions_file_path = positions_path(NAME_OF_SYSTEM + experiment_string)
+outfile = open(energy_samples_file_path, 'w')
+positions_file = open(positions_file_path, 'w')
+
+energy_estimate, norm_grad_estimate, grad_by_energy_estimate = single_run_model_mcmc_sampler(
+    wf_model=model,
+    number_of_cycles=2 ** 18,
+    gradient=False,
+    interactions=False,
+    print_to_file=True,
+    outfile=outfile,
+    positions_file=positions_file)
+
+outfile.close()
+positions_file.close()
+
+positions = np.loadtxt(positions_file_path)
+
+plot_2d_densities(position_vectors=[positions], resolution=100, particles=num_particles,
+                  save_path=image_path("OB-density-nonint"))
