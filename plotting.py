@@ -90,7 +90,7 @@ def surface_plot(matrix, **kwargs):
     return fig, ax, surf
 
 
-def plot_several_densities(position_vectors, resolution, particles, save_path):
+def plot_3d_densities(position_vectors, resolution, particles, save_path):
     clr = ['b', 'r', 'g', 'm']
     fig = plt.figure(1)
     for i, positions in enumerate(position_vectors):
@@ -124,6 +124,19 @@ def plot_2d_densities(position_vectors, resolution, particles, save_path):
         plt.subplot(2, 1, 2)
         plt.xlabel("y")
         plt.plot(y_bins[0:-1], y_hist, clr[i] + '.')
+    fig.tight_layout()
+    plt.savefig(save_path + ".png", format='png')
+    plt.show()
+
+
+def plot_1d_densities(position_vectors, resolution, particles, save_path):
+    clr = ['b', 'r', 'g', 'm']
+    fig = plt.figure(1)
+    for i, positions in enumerate(position_vectors):
+        x_hist, x_bins = np.histogram(positions[:, 0], bins=np.linspace(-3, 3, resolution), density=True)
+        plt.title(f"Simulated one-body density for {particles} particles")
+        plt.xlabel("x")
+        plt.plot(x_bins[0:-1], x_hist, clr[i] + '.')
     fig.tight_layout()
     plt.savefig(save_path + ".png", format='png')
     plt.show()
