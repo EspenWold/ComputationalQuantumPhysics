@@ -4,32 +4,49 @@ import autograd.numpy as np
 from autograd import grad, elementwise_grad
 
 
-def log_interaction_factor(positions: np.ndarray, gamma: float, dimensions: int):
-    num_particles = int(len(positions)/dimensions)
+def sum_of_distances(positions: np.ndarray, dimensions: int):
+    num_particles = int(len(positions) / dimensions)
     cumulative_distance = 0
     for i in range(num_particles):
         for j in range(i + 1, num_particles):
             square_dist = 0
             for d in range(dimensions):
-                square_dist += (positions[i*dimensions + d] - positions[j*dimensions + d])**2
+                square_dist += (positions[i * dimensions + d] - positions[j * dimensions + d]) ** 2
             cumulative_distance += np.sqrt(square_dist)
 
-    return gamma*cumulative_distance
+    return cumulative_distance
+
+
+def sum_of_norm_vectors(positions: np.ndarray, dimensions: int):
+    num_particles = int(len(positions) / dimensions)
+    result_per_coordinate = np.zeros(len(positions))
+    for i in range(num_particles):
+        other_particle_index = 0
+        pos1 = positions[i * dimensions:(i + 1) * dimensions]
+        for j in range(num_particles):
+            if i != other_particle_index:
+                pos2 = positions[other_particle_index * dimensions:(other_particle_index + 1) * dimensions]
+                vec = np.subtract(pos1, pos2)
+                result_per_coordinate[i * dimensions:(i + 1) * dimensions] += vec / np.linalg.norm(vec)
+            other_particle_index += 1
+
+    return result_per_coordinate
 
 
 def get_log_wf_value(positions: np.ndarray, flattened_parameter_array: np.ndarray, wf_squared: bool,
-                     sigma_squared: float, coords: int, h_nodes: int):
-    [a, b, flat_w] = np.split(flattened_parameter_array, [coords, coords + h_nodes])
+                     sigma_squared: float, coords: int, h_nodes: int, dimensions: int):
+    [gamma, a, b, flat_w] = np.split(flattened_parameter_array, [1, coords + 1, coords + h_nodes + 1])
     w = flat_w.reshape((coords, h_nodes))
     gaussian_factor_exponent = - 0.5 * np.linalg.norm((positions - a)) ** 2 / sigma_squared
     hidden_layer_exponent_vector = (b + np.matmul(positions, w) / sigma_squared)
     product_vector = 1 + np.exp(hidden_layer_exponent_vector)
     hidden_layer_term = np.sum(np.log(product_vector))
-
+    interaction_term = gamma * sum_of_distances(positions, dimensions)
     if wf_squared:
         gaussian_factor_exponent /= 2
         hidden_layer_term /= 2
-    return gaussian_factor_exponent + hidden_layer_term
+        interaction_term /= 2
+    return gaussian_factor_exponent + hidden_layer_term + interaction_term
 
 
 class BMWaveFunctionModel:
@@ -39,7 +56,7 @@ class BMWaveFunctionModel:
         self.wf_squared = wf_squared
         self.num_particles = num_particles
         self.dimensions = dimensions
-        self.gamma: np.ndarray = np.random.normal(loc=1.0, scale=std_deviation, size=1)[0]
+        self.gamma: np.ndarray = np.random.normal(loc=0.0, scale=std_deviation, size=1)[0]
         self.a: np.ndarray = np.random.normal(loc=0.0, scale=std_deviation, size=num_particles * dimensions)
         self.b: np.ndarray = np.random.normal(loc=0.0, scale=std_deviation, size=num_hidden_nodes)
         self.w: np.ndarray = np.random.normal(loc=0.0, scale=std_deviation,
@@ -49,15 +66,16 @@ class BMWaveFunctionModel:
         self.log_autograd_position_second = elementwise_grad(self.log_autograd_position_first)
 
     def get_model_specs(self):
-        num_parameters = self.a.size + self.b.size + self.w.size
+        num_parameters = 1 + self.a.size + self.b.size + self.w.size
         return self.num_particles, self.dimensions, num_parameters
 
     def get_parameters(self):
-        return np.concatenate((self.a, self.b, self.w.flatten()))
+        return np.concatenate((np.array([self.gamma]), self.a, self.b, self.w.flatten()))
 
     def set_parameters(self, flattened_parameter_array: np.ndarray):
         (coords, h_nodes) = self.w.shape
-        [flat_a, flat_b, flat_w] = np.split(flattened_parameter_array, [coords, coords + h_nodes])
+        [gamma, flat_a, flat_b, flat_w] = np.split(flattened_parameter_array, [1, coords + 1, coords + h_nodes + 1])
+        self.gamma = gamma[0]
         self.a = np.copy(flat_a)
         self.b = np.copy(flat_b)
         self.w = np.copy(flat_w.reshape(self.w.shape))
@@ -66,24 +84,27 @@ class BMWaveFunctionModel:
         gaussian_factor_exponent = - 0.5 * np.linalg.norm((positions - self.a)) ** 2 / self.sigma_squared
         hidden_layer_exponent_vector = (self.b + np.matmul(positions, self.w) / self.sigma_squared)
         product_vector = 1 + np.exp(hidden_layer_exponent_vector)
+        interaction_term_exponent = self.gamma * sum_of_distances(positions, self.dimensions)
         if self.wf_squared:
             gaussian_factor_exponent /= 2
             product_vector = np.sqrt(product_vector)
-        return np.exp(gaussian_factor_exponent) * np.prod(product_vector)
+            interaction_term_exponent /= 2
+        return np.exp(gaussian_factor_exponent) * np.prod(product_vector) * np.exp(interaction_term_exponent)
 
     def get_log_autograd_position(self, positions: np.ndarray):
         (coords, h_nodes) = self.w.shape
         flattened_param_list = self.get_parameters()
-        first = self.log_autograd_position_first(positions, flattened_param_list,
-                                                 self.wf_squared, self.sigma_squared, coords, h_nodes)[0]
-        second = self.log_autograd_position_second(positions, flattened_param_list,
-                                                   self.wf_squared, self.sigma_squared, coords, h_nodes)
+        first = self.log_autograd_position_first(positions, flattened_param_list, self.wf_squared, self.sigma_squared,
+                                                 coords, h_nodes, self.dimensions)[0]
+        second = self.log_autograd_position_second(positions, flattened_param_list, self.wf_squared, self.sigma_squared,
+                                                   coords, h_nodes, self.dimensions)
         return [first, second]
 
     def get_log_autograd_parameters(self, positions: np.ndarray):
         (coords, h_nodes) = self.w.shape
-        return np.array(self.log_autograd_parameters(positions, self.get_parameters(),
-                                                     self.wf_squared, self.sigma_squared, coords, h_nodes)).flatten()
+        return np.array(
+            self.log_autograd_parameters(positions, self.get_parameters(), self.wf_squared, self.sigma_squared, coords,
+                                         h_nodes, self.dimensions)).flatten()
 
     def log_derivatives_position(self, positions: np.ndarray):
         xa_vec = (positions - self.a)
@@ -91,6 +112,9 @@ class BMWaveFunctionModel:
 
         first_frac_vec = 1 / (1 + np.exp(-exponent_vec))
         first = (np.matmul(self.w, first_frac_vec) - xa_vec) / self.sigma_squared
+
+        gamma_terms = self.gamma * sum_of_norm_vectors(positions, self.dimensions)
+        first = first + gamma_terms
 
         w_squared = np.square(self.w)
         second_frac_vec = np.exp(exponent_vec) / (1 + np.exp(exponent_vec)) ** 2
@@ -104,7 +128,8 @@ class BMWaveFunctionModel:
         b_derivatives = 1 / (1 + np.exp(-(self.b + np.matmul(positions, self.w) / self.sigma_squared)))
         w_derivatives = np.outer(positions / self.sigma_squared, b_derivatives)
         factor = 0.5 if self.wf_squared else 1
-        return factor * np.concatenate([a_derivatives, b_derivatives, w_derivatives.flatten()])
+        gamma_derivative = np.array([sum_of_distances(positions, self.dimensions)])
+        return factor * np.concatenate([gamma_derivative, a_derivatives, b_derivatives, w_derivatives.flatten()])
 
 
 def local_energy(wf_log_derivative, wf_log_second_derivative, positions, omega, particle_distances,
@@ -222,7 +247,6 @@ def single_run_model_mcmc_sampler(wf_model: BMWaveFunctionModel, number_of_cycle
             # print("Analytical:", gradient_sample)
             # print("Autograd:", grad_test)
 
-
         progress += 1
         if print_to_file:
             if progress % 50000 == 0:
@@ -250,7 +274,7 @@ def single_run_model_mcmc_sampler(wf_model: BMWaveFunctionModel, number_of_cycle
 
 def gradient_descent(wf_model: BMWaveFunctionModel, interactions: bool, importance_sampling: bool):
     learning_rate = 0.1
-    number_of_cycles = 10000
+    number_of_cycles = 20000
 
     (num_particles, dimensions_per_particle, num_parameters) = wf_model.get_model_specs()
     energy_estimate = 0.0
@@ -272,7 +296,7 @@ def gradient_descent(wf_model: BMWaveFunctionModel, interactions: bool, importan
         print("Energy: ", energy_estimate,
               " Gradient: ", np.linalg.norm(variational_gradient)
               )
-        print("Parameters", wf_model.get_parameters()[0:4])
-        print("Gradient", variational_gradient[0:4])
+        print("Parameters", wf_model.get_parameters()[0:5])
+        print("Gradient", variational_gradient[0:5])
 
     return wf_model

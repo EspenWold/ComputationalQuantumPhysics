@@ -6,8 +6,7 @@ from SimulatedSystems.harmonic_oscillator import exact_energy_1d, exact_energy_2
     harmonic_oscillator_gradient_descent, exact_variance_1d, exact_variance_2d, exact_variance_3d, \
     mc_sampler_harmonic_oscillator, single_run_mcmc_sampler
 from SimulatedSystems.interacting_case import single_run_interaction_mcmc_sampler, interaction_gradient_descent
-from VariationalMonteCarlo.MCSampler import gradient_descent, BMWaveFunctionModel, single_run_model_mcmc_sampler, \
-    log_interaction_factor
+from VariationalMonteCarlo.MCSampler import gradient_descent, BMWaveFunctionModel, single_run_model_mcmc_sampler
 from plotting import energy_variance_plot, plot_positions, plot_3d_densities, plot_2d_densities, plot_1d_densities
 from statistical_analysis import block
 
@@ -217,27 +216,27 @@ dimensions = 2
 num_hidden_nodes = 2
 interacting = True
 importance_sampling = True
+num_cycles = 2 ** 19
 
 interaction_str = 'interacting' if interacting else 'non-interacting'
-experiment_string = f'_{dimensions}d_{num_particles}p_' + interaction_str + ".dat"
+experiment_string = f'_{dimensions}d_{num_particles}p_{num_hidden_nodes}n_' + interaction_str + ".dat"
+energy_samples_file_path = raw_samples_path(NAME_OF_SYSTEM + experiment_string)
+positions_file_path = positions_path(NAME_OF_SYSTEM + experiment_string)
 
 model = BMWaveFunctionModel(wf_squared=True,
                             sigma_squared=0.5,
                             num_particles=num_particles,
                             dimensions=dimensions,
                             num_hidden_nodes=num_hidden_nodes,
-                            std_deviation=0.1)
+                            std_deviation=0.001)
 print(f'Starting model optimisation with model parameters:')
 print(model.get_parameters())
 
 gradient_descent(wf_model=model, interactions=interacting, importance_sampling=importance_sampling)
 
-energy_samples_file_path = raw_samples_path(NAME_OF_SYSTEM + experiment_string)
-positions_file_path = positions_path(NAME_OF_SYSTEM + experiment_string)
 outfile = open(energy_samples_file_path, 'w')
 positions_file = open(positions_file_path, 'w')
 
-num_cycles = 2 ** 19
 print(f'Running main simulation with {num_cycles} cycles and model parameters:')
 print(model.get_parameters())
 energy_estimate, variational_gradient = single_run_model_mcmc_sampler(
@@ -277,255 +276,3 @@ elif dimensions == 2:
 elif dimensions == 3:
     plot_3d_densities(position_vectors=[positions, comparison_positions], resolution=100, particles=num_particles,
                       save_path=image_path("OB-density-nonint"))
-
-# # 2-electron VMC code for 2dim quantum dot with importance sampling
-# # Using gaussian rng for new positions and Metropolis- Hastings
-# # Added restricted boltzmann machine method for dealing with the wavefunction
-# # RBM code based heavily off of:
-# # https://github.com/CompPhysics/ComputationalPhysics2/tree/gh-pages/doc/Programs/BoltzmannMachines/MLcpp/src/CppCode/ob
-# from math import exp, sqrt
-# from random import random, seed, normalvariate
-# import numpy as np
-# import matplotlib.pyplot as plt
-# from mpl_toolkits.mplot3d import Axes3D
-# from matplotlib import cm
-# from matplotlib.ticker import LinearLocator, FormatStrFormatter
-# import sys
-#
-#
-# # Trial wave function for the 2-electron quantum dot in two dims
-# def WaveFunction(r, a, b, w):
-#     sigma = 1.0
-#     sig2 = sigma ** 2
-#     Psi1 = 0.0
-#     Psi2 = 1.0
-#     Q = Qfac(r, b, w)
-#
-#     for iq in range(NumberParticles):
-#         for ix in range(Dimension):
-#             Psi1 += (r[iq, ix] - a[iq, ix]) ** 2
-#
-#     for ih in range(NumberHidden):
-#         Psi2 *= (1.0 + np.exp(Q[ih]))
-#
-#     Psi1 = np.exp(-Psi1 / (2 * sig2))
-#
-#     return Psi1 * Psi2
-#
-#
-# # Local energy  for the 2-electron quantum dot in two dims, using analytical local energy
-# def LocalEnergy(r, a, b, w):
-#     sigma = 1.0
-#     sig2 = sigma ** 2
-#     locenergy = 0.0
-#
-#     Q = Qfac(r, b, w)
-#
-#     for iq in range(NumberParticles):
-#         for ix in range(Dimension):
-#             sum1 = 0.0
-#             sum2 = 0.0
-#             for ih in range(NumberHidden):
-#                 sum1 += w[iq, ix, ih] / (1 + np.exp(-Q[ih]))
-#                 sum2 += w[iq, ix, ih] ** 2 * np.exp(Q[ih]) / (1.0 + np.exp(Q[ih])) ** 2
-#
-#             dlnpsi1 = -(r[iq, ix] - a[iq, ix]) / sig2 + sum1 / sig2
-#             dlnpsi2 = -1 / sig2 + sum2 / sig2 ** 2
-#             locenergy += 0.5 * (-dlnpsi1 * dlnpsi1 - dlnpsi2 + r[iq, ix] ** 2)
-#
-#     if (interaction == True):
-#         for iq1 in range(NumberParticles):
-#             for iq2 in range(iq1):
-#                 distance = 0.0
-#                 for ix in range(Dimension):
-#                     distance += (r[iq1, ix] - r[iq2, ix]) ** 2
-#
-#                 locenergy += 1 / sqrt(distance)
-#
-#     return locenergy
-#
-#
-# # Derivate of wave function ansatz as function of variational parameters
-# def DerivativeWFansatz(r, a, b, w):
-#     sigma = 1.0
-#     sig2 = sigma ** 2
-#
-#     Q = Qfac(r, b, w)
-#
-#     WfDer = np.empty((3,), dtype=object)
-#     WfDer = [np.copy(a), np.copy(b), np.copy(w)]
-#
-#     WfDer[0] = (r - a) / sig2
-#     WfDer[1] = 1 / (1 + np.exp(-Q))
-#
-#     for ih in range(NumberHidden):
-#         WfDer[2][:, :, ih] = w[:, :, ih] / (sig2 * (1 + np.exp(-Q[ih])))
-#
-#     return WfDer
-#
-#
-# # Setting up the quantum force for the two-electron quantum dot, recall that it is a vector
-# def QuantumForce(r, a, b, w):
-#     sigma = 1.0
-#     sig2 = sigma ** 2
-#
-#     qforce = np.zeros((NumberParticles, Dimension), np.double)
-#     sum1 = np.zeros((NumberParticles, Dimension), np.double)
-#
-#     Q = Qfac(r, b, w)
-#
-#     for ih in range(NumberHidden):
-#         sum1 += w[:, :, ih] / (1 + np.exp(-Q[ih]))
-#
-#     qforce = 2 * (-(r - a) / sig2 + sum1 / sig2)
-#
-#     return qforce
-#
-#
-# def Qfac(r, b, w):
-#     Q = np.zeros((NumberHidden), np.double)
-#     temp = np.zeros((NumberHidden), np.double)
-#
-#     for ih in range(NumberHidden):
-#         temp[ih] = (r * w[:, :, ih]).sum()
-#
-#     Q = b + temp
-#
-#     return Q
-#
-#
-# # Computing the derivative of the energy and the energy
-# def EnergyMinimization(a, b, w):
-#     NumberMCcycles = 10000
-#     # Parameters in the Fokker-Planck simulation of the quantum force
-#     D = 0.5
-#     TimeStep = 0.05
-#     # positions
-#     PositionOld = np.zeros((NumberParticles, Dimension), np.double)
-#     PositionNew = np.zeros((NumberParticles, Dimension), np.double)
-#     # Quantum force
-#     QuantumForceOld = np.zeros((NumberParticles, Dimension), np.double)
-#     QuantumForceNew = np.zeros((NumberParticles, Dimension), np.double)
-#
-#     # seed for rng generator
-#     seed()
-#     energy = 0.0
-#     DeltaE = 0.0
-#
-#     EnergyDer = np.empty((3,), dtype=object)
-#     DeltaPsi = np.empty((3,), dtype=object)
-#     DerivativePsiE = np.empty((3,), dtype=object)
-#     EnergyDer = [np.copy(a), np.copy(b), np.copy(w)]
-#     DeltaPsi = [np.copy(a), np.copy(b), np.copy(w)]
-#     DerivativePsiE = [np.copy(a), np.copy(b), np.copy(w)]
-#     for i in range(3): EnergyDer[i].fill(0.0)
-#     for i in range(3): DeltaPsi[i].fill(0.0)
-#     for i in range(3): DerivativePsiE[i].fill(0.0)
-#
-#     # Initial position
-#     for i in range(NumberParticles):
-#         for j in range(Dimension):
-#             PositionOld[i, j] = normalvariate(0.0, 1.0) * sqrt(TimeStep)
-#     wfold = WaveFunction(PositionOld, a, b, w)
-#     QuantumForceOld = QuantumForce(PositionOld, a, b, w)
-#
-#     # Loop over MC MCcycles
-#     for MCcycle in range(NumberMCcycles):
-#         # Trial position moving one particle at the time
-#         for i in range(NumberParticles):
-#             for j in range(Dimension):
-#                 PositionNew[i, j] = PositionOld[i, j] + normalvariate(0.0, 1.0) * sqrt(TimeStep) + \
-#                                     QuantumForceOld[i, j] * TimeStep * D
-#             wfnew = WaveFunction(PositionNew, a, b, w)
-#             QuantumForceNew = QuantumForce(PositionNew, a, b, w)
-#
-#             GreensFunction = 0.0
-#             for j in range(Dimension):
-#                 GreensFunction += 0.5 * (QuantumForceOld[i, j] + QuantumForceNew[i, j]) * \
-#                                   (D * TimeStep * 0.5 * (QuantumForceOld[i, j] - QuantumForceNew[i, j]) - \
-#                                    PositionNew[i, j] + PositionOld[i, j])
-#
-#             GreensFunction = exp(GreensFunction)
-#             ProbabilityRatio = GreensFunction * wfnew ** 2 / wfold ** 2
-#             # Metropolis-Hastings test to see whether we accept the move
-#             if random() <= ProbabilityRatio:
-#                 for j in range(Dimension):
-#                     PositionOld[i, j] = PositionNew[i, j]
-#                     QuantumForceOld[i, j] = QuantumForceNew[i, j]
-#                 wfold = wfnew
-#         # print("wf new:        ", wfnew)
-#         # print("force on 1 new:", QuantumForceNew[0,:])
-#         # print("pos of 1 new:  ", PositionNew[0,:])
-#         # print("force on 2 new:", QuantumForceNew[1,:])
-#         # print("pos of 2 new:  ", PositionNew[1,:])
-#         DeltaE = LocalEnergy(PositionOld, a, b, w)
-#         DerPsi = DerivativeWFansatz(PositionOld, a, b, w)
-#
-#         DeltaPsi[0] += DerPsi[0]
-#         DeltaPsi[1] += DerPsi[1]
-#         DeltaPsi[2] += DerPsi[2]
-#
-#         energy += DeltaE
-#
-#         DerivativePsiE[0] += DerPsi[0] * DeltaE
-#         DerivativePsiE[1] += DerPsi[1] * DeltaE
-#         DerivativePsiE[2] += DerPsi[2] * DeltaE
-#
-#     # We calculate mean values
-#     energy /= NumberMCcycles
-#     DerivativePsiE[0] /= NumberMCcycles
-#     DerivativePsiE[1] /= NumberMCcycles
-#     DerivativePsiE[2] /= NumberMCcycles
-#     DeltaPsi[0] /= NumberMCcycles
-#     DeltaPsi[1] /= NumberMCcycles
-#     DeltaPsi[2] /= NumberMCcycles
-#     EnergyDer[0] = 2 * (DerivativePsiE[0] - DeltaPsi[0] * energy)
-#     EnergyDer[1] = 2 * (DerivativePsiE[1] - DeltaPsi[1] * energy)
-#     EnergyDer[2] = 2 * (DerivativePsiE[2] - DeltaPsi[2] * energy)
-#     return energy, EnergyDer
-#
-#
-# # Here starts the main program with variable declarations
-# NumberParticles = 2
-# Dimension = 2
-# NumberHidden = 10
-#
-# interaction = True
-#
-# # guess for parameters
-# a = np.random.normal(loc=0.0, scale=0.01, size=(NumberParticles, Dimension))
-# b = np.random.normal(loc=0.0, scale=0.01, size=(NumberHidden))
-# w = np.random.normal(loc=0.0, scale=0.01, size=(NumberParticles, Dimension, NumberHidden))
-# # Set up iteration using stochastic gradient method
-# Energy = 0
-# EDerivative = np.empty((3,), dtype=object)
-# EDerivative = [np.copy(a), np.copy(b), np.copy(w)]
-# # Learning rate eta, max iterations, need to change to adaptive learning rate
-# eta = 0.001
-# MaxIterations = 100
-# iter = 0
-# np.seterr(invalid='raise')
-# Energies = np.zeros(MaxIterations)
-#
-# Energy, EDerivative = EnergyMinimization(a, b, w)
-#
-# while iter < MaxIterations:
-#     Energy, EDerivative = EnergyMinimization(a, b, w)
-#     agradient = EDerivative[0]
-#     bgradient = EDerivative[1]
-#     wgradient = EDerivative[2]
-#     a -= eta * agradient
-#     b -= eta * bgradient
-#     w -= eta * wgradient
-#     Energies[iter] = Energy
-#     print("Energy:", Energy)
-#
-#     iter += 1
-#
-# import pandas as pd
-#
-# data = {
-#     'Energy': Energies}
-#
-# frame = pd.DataFrame(data)
-# print(frame)
