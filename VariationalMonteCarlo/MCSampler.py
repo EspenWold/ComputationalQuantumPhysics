@@ -273,8 +273,8 @@ def single_run_model_mcmc_sampler(wf_model: BMWaveFunctionModel, number_of_cycle
 
 
 def gradient_descent(wf_model: BMWaveFunctionModel, interactions: bool, importance_sampling: bool):
-    learning_rate = 0.1
-    number_of_cycles = 20000
+    learning_rate = 0.01
+    number_of_cycles = 10000
 
     (num_particles, dimensions_per_particle, num_parameters) = wf_model.get_model_specs()
     energy_estimate = 0.0

@@ -207,14 +207,12 @@ def positions_path(dat_id):
 
 
 # Project 2
-
-# Task B - D
 # Make sure to set NAME_OF_SYSTEM = "VMC_RBM" in the top of this file
 # ------------------------------------------------
 num_particles = 2
 dimensions = 2
 num_hidden_nodes = 2
-interacting = True
+interacting = False
 importance_sampling = True
 num_cycles = 2 ** 19
 
@@ -264,7 +262,7 @@ frame = pd.DataFrame(results, index=['Values'])
 print(frame)
 
 positions = np.loadtxt(positions_file_path)
-comparison_string = f'_{2}d_{2}p_' + 'non-interacting' + ".dat"
+comparison_string = f'_{dimensions}d_{num_particles}p_{num_hidden_nodes}n_' + 'non-interacting' + ".dat"
 comparison_positions = np.loadtxt(positions_path(NAME_OF_SYSTEM + comparison_string))
 print("Plotting", experiment_string, " and ", comparison_string)
 if dimensions == 1:
