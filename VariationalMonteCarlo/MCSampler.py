@@ -280,8 +280,6 @@ def gradient_descent(wf_model: BMWaveFunctionModel, interactions: bool, importan
     energy_estimate = 0.0
     variational_gradient = np.zeros(num_parameters)
     for n in range(100):
-        # Update our variational parameters by using the estimated gradient
-        wf_model.set_parameters(wf_model.get_parameters() - learning_rate * variational_gradient)
         print("Step ", n + 1)
         # Run a single round of MCMC
         energy_estimate, variational_gradient = single_run_model_mcmc_sampler(
@@ -299,4 +297,6 @@ def gradient_descent(wf_model: BMWaveFunctionModel, interactions: bool, importan
         print("Parameters", wf_model.get_parameters()[0:5])
         print("Gradient", variational_gradient[0:5])
 
+        # Update our variational parameters by using the estimated gradient
+        wf_model.set_parameters(wf_model.get_parameters() - learning_rate * variational_gradient)
     return wf_model
